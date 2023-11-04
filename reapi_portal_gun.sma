@@ -5,7 +5,7 @@
 #include <xs>
 
 new const PLUGIN_NAME[] = "[ReAPI] Portal Gun";
-new const PLUGIN_VERSION[] = "1.0abc";
+new const PLUGIN_VERSION[] = "0.2b";
 new const PLUGIN_AUTHOR[] = "bizon, ArKaNeMaN, karaulov";
 //new const PLUGIN_ORIGINAL_URL[] = "https://dev-cs.ru/resources/1523/";
 
@@ -256,8 +256,7 @@ public plugin_init()
 
 		vecOriginUp = vecOrigin;
 		vecOriginUp[2] += 50.0;
-
-		set_msg_spritetrail(vecOrigin, vecOriginUp, g_iSpriteFlareIndex[bIsPrimaryAttack ? PORTAL_PRIMARY : PORTAL_SECONDARY], 20, 5, 2, 10, 1);
+		set_msg_spritetrail(vecOrigin, vecOriginUp, g_iSpriteFlareIndex[bIsPrimaryAttack ? PORTAL_PRIMARY : PORTAL_SECONDARY], 25, 2, 2, 25, 20);
 	}
 	else
 	{
@@ -272,7 +271,7 @@ public plugin_init()
 	eEnt = rg_create_entity("info_target");
 
 	engfunc(EngFunc_SetModel, eEnt, g_szPortalGunResource[PG_MDL_PORTAL]);
-	engfunc(EngFunc_SetSize, eEnt, Float: { -1.0, -22.0, -36.0 }, Float: { 1.0, 22.0, 36.0 });
+	engfunc(EngFunc_SetSize, eEnt, Float: { -2.0, -30.0, -40.0 }, Float: { 2.0, 30.0, 40.0 });
 	engfunc(EngFunc_SetOrigin, eEnt, vecOrigin);
 
 	set_entvar(eEnt, var_classname, bIsPrimary ? PORTAL_CLASSNAME_1 : PORTAL_CLASSNAME_2);
@@ -319,6 +318,7 @@ public plugin_init()
 	{
 		new sClassName[64];
 		get_entvar(pPlayer, var_classname, sClassName,charsmax(sClassName));
+		// Если не граната то не пропускать
 		if (!equal(sClassName,"grenade"))
 			bIsValidEntity = false;
 	}
@@ -328,7 +328,8 @@ public plugin_init()
 
 	new Float: fGameTime;
 	fGameTime = get_gametime();
-
+	
+	// Разрешить небольшие зацикливания для игрока (не чаще чем 0.5 сек)
 	if( bIsValidEntity || (bIsPlayer && floatabs(g_flPortalAccessTime[pPlayer] - fGameTime) > 0.5) )
 	{
 		new pOwner;
@@ -361,17 +362,58 @@ public plugin_init()
 
 			new Float: vecOriginTeleport[3];
 			get_entvar(ePortalEnt, var_vuser1, vecOriginTeleport);
-
-			if(!is_hull_vacant(vecOriginTeleport, HULL_HUMAN, pPlayer))
+			
+			new Float: vecOriginBase[3];
+			get_entvar(eEnt, var_origin, vecOriginBase);
+			
+			new Float: vecOriginOffset[3];
+			get_entvar(pPlayer, var_origin, vecOriginOffset);
+			
+			new Float: vecTest[3];
+			
+			vecTest[2] = vecOriginTeleport[2];
+			
+			for (new i = 0; i < 2; i++) {
+				vecTest[i] = floatabs(vecOriginOffset[i] - vecOriginBase[i]);
+				if (vecTest[i] > 46.0)
+					vecTest[i] = 46.0;
+			}
+			for (new i = 0; i < 2; i++) {
+				vecTest[i] = vecOriginTeleport[i] - vecTest[i];
+			}
+			
+			if(is_hull_vacant(vecTest, HULL_HUMAN, pPlayer))
 			{
-				if (bIsPlayer)
-				{
-					g_flPortalAccessTime[pPlayer] = fGameTime;
+				vecOriginTeleport = vecTest;
+			}
+			else 
+			{
+				for (new i = 0; i < 2; i++) {
+					vecTest[i] = floatabs(vecOriginOffset[i] - vecOriginBase[i]);
+					if (vecTest[i] > 46.0)
+						vecTest[i] = 46.0;
 				}
-				return;
+				
+				for (new i = 0; i < 2; i++) {
+					vecTest[i] = vecOriginTeleport[i] + vecTest[i];
+				}
+			
+				if(is_hull_vacant(vecTest, HULL_HUMAN, pPlayer))
+				{
+					vecOriginTeleport = vecTest;
+				}
+				else 
+				{
+					if (bIsPlayer)
+					{
+						g_flPortalAccessTime[pPlayer] = fGameTime;
+					}
+					return;
+				}
 			}
 			
 			set_entvar(pPlayer, var_origin, vecOriginTeleport);
+			
 			// Получение всего что надо
 			new Float:vecInAngle[3];
 			get_entvar(eEnt, var_vuser2, vecInAngle);
@@ -410,8 +452,8 @@ public plugin_init()
 
 bool: @is_get_origin_aiming_place_accuracy(pPlayer, Float: vecOrigin[3], Float: vecAngles[3], Float: vecOriginTeleport[3], Float: vecAnglesTeleport[3], bool: bIsPrimaryAttack)
 {
-	const Float: flOriginShiftValueCreate = 1.0;
-	const Float: flOriginShiftValueTeleport = 50.0;
+	const Float: flOriginShiftValueCreate = 2.0;
+	const Float: flOriginShiftValueTeleport = 60.0;
 
 	new
 		Float: vecDest[3],
@@ -438,12 +480,11 @@ bool: @is_get_origin_aiming_place_accuracy(pPlayer, Float: vecOrigin[3], Float: 
 
 	while((eFindEnt = engfunc(EngFunc_FindEntityInSphere, eFindEnt, vecOrigin, 40.0)))
 	{
-		if(is_user_connected(eFindEnt) || 
-		(!is_nullent(eFindEnt) && 
+		if(!is_nullent(eFindEnt) && 
 		(
 		(FClassnameIs(eFindEnt, PORTAL_CLASSNAME_1) && !bIsPrimaryAttack) || 
 		(FClassnameIs(eFindEnt, PORTAL_CLASSNAME_2) && bIsPrimaryAttack) 
-		)))
+		))
 		{
 			return false;
 		}
@@ -460,7 +501,7 @@ bool: @is_get_origin_aiming_place_accuracy(pPlayer, Float: vecOrigin[3], Float: 
 	else
 		xs_vec_neg(vecAngles, vecAnglesTeleport);
 
-	return true;
+	return is_hull_vacant(vecOriginTeleport, HULL_HUMAN, pPlayer);
 }
 
 @show_hud_info(pPlayer)
@@ -580,17 +621,41 @@ public plugin_natives()
 	Float:vecResAngle[3]
 ) {
 	for (new i = 0; i < 2; i++) {
-		vecResAngle[i] = (vecSrcAngle[i] - vecInAngle[i] + vecOutAngle[i]) - 180;
+		vecResAngle[i] = (vecSrcAngle[i] - vecInAngle[i] + vecOutAngle[i] ) - 180;
 	}
 }
 // Получение вектора движения игрока после прохождения через портал
 @pg_vec_GetOutVel(
 	const Float:vecInAngle[3],  // Угол входного портала
 	const Float:vecOutAngle[3], // Угол выходного портала
-	const Float:vecSrcVel[3],   // Входной вектор движения игрока
+	Float:vecSrcVel[3],   // Входной вектор движения игрока
 	Float:vecOutVel[3]
 ) {
 	new Float:fSrcSpeed = vector_length(vecSrcVel);
+	
+	if (floatabs(360.0 + vecInAngle[0] + vecOutAngle[0]) <= 91.0)
+		vecSrcVel[2] *= -1.0;
+	
+	if (xs_fsign(fSrcSpeed) != -1)
+	{
+		// Минимальная скорость падения игрока	
+		if (fSrcSpeed < 200.0)
+			fSrcSpeed = 200.0;
+			
+		// Максимальная скорость падения игрока
+		if (fSrcSpeed > 500.0)
+			fSrcSpeed = 500.0;
+	}
+	else 
+	{
+		// Минимальная скорость падения игрока	
+		if (fSrcSpeed > -200.0)
+			fSrcSpeed = -200.0;
+			
+		// Максимальная скорость падения игрока
+		if (fSrcSpeed < -500.0)
+			fSrcSpeed = -500.0;
+	}
 	new Float:vecSrcDir[3];
 	for (new i = 0; i < 3; i++) {
 		vecSrcDir[i] = -(vecSrcVel[i] / fSrcSpeed);
@@ -613,7 +678,7 @@ stock rg_remove_entity(eEnt)
 	set_entvar(eEnt, var_nextthink, -1);
 }
 
-stock is_hull_vacant(Float: vecOrigin[3], iHull, eEnt)
+stock bool:is_hull_vacant(Float: vecOrigin[3], iHull, eEnt)
 {
 	engfunc(EngFunc_TraceHull, vecOrigin, vecOrigin, DONT_IGNORE_MONSTERS, iHull, eEnt, 0);
 
